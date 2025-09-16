@@ -2,10 +2,12 @@ import requests
 import json
 import pandas as pd
 from io import BytesIO
+import pyarrow as pa
+import pyarrow.parquet as pq
 import re
 import logging
 import time
-from typing import Union, Optional, Dict, Any
+from typing import Union, Optional, Dict, Any, List
 from data_processing_framework.file_io.client.base_io_client import BaseIOClient
 
 # Configurar logging
@@ -211,6 +213,224 @@ class HDFSClient(BaseIOClient):
         except Exception as e:
             logger.error(f"Erro ao converter DataFrame para CSV para {hdfs_path}: {e}")
             return False
+    
+    def read_parquet(self, hdfs_path: str, columns: Optional[List[str]] = None, 
+                     use_pandas_metadata: bool = True, **kwargs) -> Optional[pd.DataFrame]:
+        """
+        Lê um arquivo Parquet do HDFS como DataFrame
+        
+        Args:
+            hdfs_path: Caminho do arquivo Parquet no HDFS
+            columns: Lista de colunas para ler (None = todas as colunas)
+            use_pandas_metadata: Se deve usar metadados do pandas para tipos de dados
+            **kwargs: Argumentos adicionais para pyarrow.parquet.read_table
+        
+        Returns:
+            pd.DataFrame ou None em caso de erro
+        """
+        try:
+            content = self.read_file(hdfs_path)
+            if content is None:
+                return None
+            
+            # Ler arquivo Parquet usando PyArrow
+            parquet_file = pq.ParquetFile(BytesIO(content))
+            
+            # Ler tabela com colunas específicas se fornecidas
+            table = parquet_file.read(columns=columns, use_pandas_metadata=use_pandas_metadata, **kwargs)
+            
+            # Converter para DataFrame pandas
+            df = table.to_pandas()
+            
+            logger.info(f"Arquivo Parquet lido com sucesso: {hdfs_path} ({len(df)} linhas, {len(df.columns)} colunas)")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Erro ao ler arquivo Parquet de {hdfs_path}: {e}")
+            return None
+    
+    def save_parquet(self, hdfs_path: str, dataframe: pd.DataFrame, 
+                     compression: str = 'snappy', index: bool = False,
+                     partition_cols: Optional[List[str]] = None,
+                     overwrite: bool = True, **kwargs) -> bool:
+        """
+        Salva um DataFrame como arquivo Parquet no HDFS
+        
+        Args:
+            hdfs_path: Caminho onde salvar o arquivo Parquet no HDFS
+            dataframe: DataFrame pandas para salvar
+            compression: Algoritmo de compressão ('snappy', 'gzip', 'brotli', 'lz4', 'zstd', None)
+            index: Se deve incluir o índice do DataFrame no arquivo
+            partition_cols: Lista de colunas para particionar (para datasets particionados)
+            overwrite: Se deve sobrescrever arquivo existente
+            **kwargs: Argumentos adicionais para pyarrow.Table.from_pandas
+        
+        Returns:
+            bool: True se salvo com sucesso, False caso contrário
+        """
+        try:
+            # Converter DataFrame para tabela Arrow
+            table = pa.Table.from_pandas(dataframe, preserve_index=index, **kwargs)
+            
+            # Buffer para armazenar dados Parquet
+            buffer = BytesIO()
+            
+            # Escrever tabela como Parquet no buffer
+            pq.write_table(
+                table, 
+                buffer, 
+                compression=compression,
+                use_dictionary=True,  # Otimização para strings repetitivas
+                write_statistics=True,  # Incluir estatísticas para otimização de consultas
+                use_deprecated_int96_timestamps=False  # Usar formato de timestamp mais novo
+            )
+            
+            # Obter bytes do buffer
+            parquet_bytes = buffer.getvalue()
+            buffer.close()
+            
+            # Salvar no HDFS
+            success = self.save_file(hdfs_path, parquet_bytes, overwrite=overwrite)
+            
+            if success:
+                logger.info(f"DataFrame salvo como Parquet: {hdfs_path} ({len(dataframe)} linhas, {len(dataframe.columns)} colunas, {len(parquet_bytes)} bytes)")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Erro ao salvar DataFrame como Parquet em {hdfs_path}: {e}")
+            return False
+    
+    def read_parquet_metadata(self, hdfs_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Lê apenas os metadados de um arquivo Parquet sem carregar os dados
+        
+        Args:
+            hdfs_path: Caminho do arquivo Parquet no HDFS
+        
+        Returns:
+            dict: Metadados do arquivo Parquet incluindo schema, estatísticas, etc.
+        """
+        try:
+            content = self.read_file(hdfs_path)
+            if content is None:
+                return None
+            
+            # Abrir arquivo Parquet
+            parquet_file = pq.ParquetFile(BytesIO(content))
+            
+            # Extrair metadados
+            metadata = {
+                'num_rows': parquet_file.metadata.num_rows,
+                'num_columns': parquet_file.metadata.num_columns,
+                'num_row_groups': parquet_file.metadata.num_row_groups,
+                'serialized_size': parquet_file.metadata.serialized_size,
+                'schema': {
+                    'names': parquet_file.schema.names,
+                    'pandas_metadata': parquet_file.schema.pandas_metadata if hasattr(parquet_file.schema, 'pandas_metadata') else None
+                },
+                'columns': []
+            }
+            
+            # Informações detalhadas das colunas
+            for i in range(parquet_file.metadata.num_columns):
+                col_meta = parquet_file.metadata.row_group(0).column(i)
+                column_info = {
+                    'name': parquet_file.schema.names[i],
+                    'type': str(parquet_file.schema[i].type),
+                    'total_byte_size': col_meta.total_byte_size,
+                    'total_compressed_size': col_meta.total_compressed_size,
+                    'compression': str(col_meta.compression),
+                    'encodings': [str(enc) for enc in col_meta.encodings],
+                }
+                
+                # Adicionar estatísticas se disponíveis
+                if col_meta.statistics:
+                    stats = col_meta.statistics
+                    column_info['statistics'] = {
+                        'has_min_max': stats.has_min_max,
+                        'null_count': stats.null_count,
+                        'distinct_count': stats.distinct_count if hasattr(stats, 'distinct_count') else None,
+                        'min': str(stats.min) if stats.has_min_max else None,
+                        'max': str(stats.max) if stats.has_min_max else None,
+                    }
+                
+                metadata['columns'].append(column_info)
+            
+            logger.info(f"Metadados Parquet obtidos: {hdfs_path}")
+            return metadata
+            
+        except Exception as e:
+            logger.error(f"Erro ao ler metadados Parquet de {hdfs_path}: {e}")
+            return None
+    
+    def read_parquet_dataset(self, hdfs_path: str, 
+                            filters: Optional[List] = None,
+                            columns: Optional[List[str]] = None,
+                            validate_schema: bool = True) -> Optional[pd.DataFrame]:
+        """
+        Lê um dataset Parquet (pode ser múltiplos arquivos ou partições)
+        
+        Args:
+            hdfs_path: Caminho do diretório contendo arquivos Parquet
+            filters: Filtros para aplicar aos dados (formato PyArrow)
+            columns: Lista de colunas para ler
+            validate_schema: Se deve validar que todos arquivos têm o mesmo schema
+        
+        Returns:
+            pd.DataFrame: DataFrame combinado de todos os arquivos Parquet
+        """
+        try:
+            # Encontrar todos os arquivos Parquet no diretório
+            parquet_files = self.list_parquet_files(hdfs_path, recursive=True)
+            
+            if not parquet_files:
+                logger.warning(f"Nenhum arquivo Parquet encontrado em: {hdfs_path}")
+                return None
+            
+            logger.info(f"Encontrados {len(parquet_files)} arquivos Parquet para ler")
+            
+            dataframes = []
+            schemas = []
+            
+            for parquet_file in parquet_files:
+                try:
+                    # Ler cada arquivo
+                    df = self.read_parquet(parquet_file, columns=columns)
+                    if df is not None:
+                        dataframes.append(df)
+                        
+                        # Coletar schema se validação estiver habilitada
+                        if validate_schema:
+                            content = self.read_file(parquet_file)
+                            if content:
+                                pf = pq.ParquetFile(BytesIO(content))
+                                schemas.append(pf.schema)
+                    
+                except Exception as e:
+                    logger.warning(f"Erro ao ler arquivo Parquet {parquet_file}: {e}")
+                    continue
+            
+            if not dataframes:
+                logger.error("Nenhum arquivo Parquet foi lido com sucesso")
+                return None
+            
+            # Validar schemas se solicitado
+            if validate_schema and len(schemas) > 1:
+                base_schema = schemas[0]
+                for i, schema in enumerate(schemas[1:], 1):
+                    if not base_schema.equals(schema):
+                        logger.warning(f"Schema do arquivo {i+1} difere do primeiro arquivo")
+            
+            # Combinar todos os DataFrames
+            combined_df = pd.concat(dataframes, ignore_index=True)
+            
+            logger.info(f"Dataset Parquet lido: {len(combined_df)} linhas, {len(combined_df.columns)} colunas de {len(dataframes)} arquivos")
+            return combined_df
+            
+        except Exception as e:
+            logger.error(f"Erro ao ler dataset Parquet de {hdfs_path}: {e}")
+            return None
     
     def list_directory(self, hdfs_path: str) -> Optional[list]:
         """Lista o conteúdo de um diretório no HDFS"""
@@ -427,10 +647,10 @@ class HDFSClient(BaseIOClient):
         
         Args:
             hdfs_path: Caminho do diretório no HDFS
-            file_pattern: Padrão regex para filtrar arquivos (ex: r'\.csv$' para apenas CSVs)
+            file_pattern: Padrão regex para filtrar arquivos (ex: r'\.csv para apenas CSVs)
             include_directories: Se True, inclui diretórios na listagem
             max_depth: Profundidade máxima da busca (None = sem limite, só funciona se recursive=True)
-            exclude_patterns: Lista de padrões regex para excluir diretórios/arquivos (ex: ['tracking', r'\.tmp$'])
+            exclude_patterns: Lista de padrões regex para excluir diretórios/arquivos (ex: ['tracking', r'\.tmp])
             recursive: Se True, busca recursivamente em subdiretórios. Se False, apenas no diretório atual
         
         Returns:
