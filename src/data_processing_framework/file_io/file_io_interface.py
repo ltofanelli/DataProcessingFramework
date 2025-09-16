@@ -13,24 +13,26 @@ logger = logging.getLogger(__name__)
 class FileIOInterface:
     """Classe unificada para operações de leitura e escrita com interface única"""
     
-    def __init__(self, client_type: FileInterfaceType = FileInterfaceType.LOCAL, **kwargs):
+    def __init__(self, io_credentials: dict = {}, client_type: FileInterfaceType = FileInterfaceType.LOCAL, **kwargs):
         """
         Inicializa o cliente unificado de arquivos
         
         Args:
+            io_credentials (dict): Credenciais de conexão para o client
             client_type (str): Tipo de cliente ('local' ou 'hdfs')
             **kwargs: Argumentos específicos para cada tipo de cliente
         """
+        self.credentials = io_credentials
         self.client_type = client_type
-
+        
         if client_type == FileInterfaceType.LOCAL:
             self.client = LocalFileClient(**kwargs)
 
         elif client_type == FileInterfaceType.HDFS:
-            self.client = HDFSClient(**kwargs)
+            self.client = HDFSClient(self.credentials)
 
         elif client_type == FileInterfaceType.FABRIC:
-            self.client = FabricLakehouseClient(**kwargs)
+            self.client = FabricLakehouseClient(self.credentials)
             
         else:
             raise ValueError(f"Tipo de cliente não suportado: {self.client_type}")

@@ -18,6 +18,7 @@ class PipelineConfig:
     target_table: str
     target_path: str
     tracking_path: str
+    tracking_io_credentials: dict
 
     # Configurações de fonte
     source_path: Optional[str] = None

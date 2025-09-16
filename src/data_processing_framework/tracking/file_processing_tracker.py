@@ -18,6 +18,7 @@ class FileProcessingTracker:
         self, 
         tracking_path: str, 
         process_name: str = "default_process",
+        io_credentials: dict = {},
         file_interface_type: FileInterfaceType = FileInterfaceType.HDFS,
         auto_create: bool = True
     ):
@@ -27,10 +28,11 @@ class FileProcessingTracker:
         Args:
             tracking_path (str): Caminho do arquivo JSON de tracking
             process_name (str): Nome ou ID do processo (usado no process_run)
+            io_credentials (dict): Credenciais usadas para o I/O de arquivos do tracking
             file_interface_type: tipo de interface de arquivo
             auto_create (bool): Se True, cria arquivo de tracking se não existir
         """
-        self.file_io = FileIOInterface(file_interface_type)
+        self.file_io = FileIOInterface(io_credentials, file_interface_type)
         self.process_name = process_name
         self.file_name = "file.json"
         self.tracking_path = self._validate_tracking_path(tracking_path)

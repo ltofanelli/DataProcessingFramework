@@ -15,13 +15,26 @@ logger = logging.getLogger(__name__)
 
 class HDFSClient(BaseIOClient):
     """Cliente para operações no HDFS via WebHDFS"""
-    
 
-    def __init__(self, namenode_host: str = "namenode", namenode_port: int = 9870, user: str = "hdfs"):
-        self.namenode_host = namenode_host
-        self.namenode_port = namenode_port
-        self.user = user
-        self.base_url = f"http://{namenode_host}:{namenode_port}/webhdfs/v1"
+    def __init__(self, credentials: Optional[Dict[str, Any]] = None):
+        """
+        Args:
+            credentials: dicionário com as credenciais necessárias.
+                Exemplo:
+                {
+                    "host": "meu-namenode",
+                    "port": 9870,
+                    "user": "airflow"
+                }
+        """
+        credentials = credentials or {}
+        self.namenode_host = credentials.get("host", "namenode")
+        self.namenode_port = credentials.get("port", 9870)
+        self.user = next(
+            (credentials[k] for k in ("login", "user", "username") if k in credentials),
+            "hdfs"
+        )
+        self.base_url = f"http://{self.namenode_host}:{self.namenode_port}/webhdfs/v1"
     
     def _fix_datanode_url(self, url: str): 
         """Corrige URLs de DataNode para usar localhost"""

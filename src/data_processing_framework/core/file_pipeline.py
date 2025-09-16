@@ -23,7 +23,12 @@ class FilePipeline(BasePipeline):
         super().__init__(spark, config)
         self.processed_count = 0
         self.total_records_processed = 0
-        
+        self.tracker = FileProcessingTracker(
+            tracking_path = self.config.tracking_path,
+            process_name = self.config.pipeline_name, 
+            io_credentials = self.config.tracking_io_credentials,
+            file_interface_type = self.config.file_interface_type
+        )
 
     def process(self) -> None:
         try:
@@ -80,23 +85,15 @@ class FilePipeline(BasePipeline):
         except Exception as e:
             self.logger.error(f"Erro no processamento: {str(e)}")
             raise
-    
-    def _get_tracker(self) -> FileProcessingTracker:
-        return FileProcessingTracker(
-            tracking_path = self.config.tracking_path,
-            process_name = self.config.pipeline_name, 
-            file_interface_type = self.config.file_interface_type
-        )
 
     def _get_files_to_process(self) -> List[Dict[str, Any]]:
         """Obtém lista de arquivos para processar, ordenados"""
-        tracker = self._get_tracker()
 
         if self.config.source_tracking_path:
-            return tracker.compare_with_source_tracking(
+            return self.tracker.compare_with_source_tracking(
                 self.config.source_tracking_path)
         
-        file_io = FileIOInterface(self.config.file_interface_type)
+        file_io = FileIOInterface(self.config.tracking_io_credentials, self.config.file_interface_type)
         file_pattern = rf'\.{self.config.source_file_format.value}$'
         all_files_from_source_path = file_io.list_files(
             path=self.config.source_path, 
@@ -104,16 +101,14 @@ class FilePipeline(BasePipeline):
             exclude_patterns=["tracking"]
         )
 
-        unprocessed_files = tracker.get_unprocessed_files(all_files_from_source_path)
+        unprocessed_files = self.tracker.get_unprocessed_files(all_files_from_source_path)
         return unprocessed_files
     
     def _update_tracking(self, file: Union[dict, List[Dict[str, Any]]]) -> bool:
-        tracker = self._get_tracker()
-
         if isinstance(file, dict):
-            tracker.mark_file_dict_processed(file)
+            self.tracker.mark_file_dict_processed(file)
         elif isinstance(file, list):
-            tracker.mark_batch_processed(file)
+            self.tracker.mark_batch_processed(file)
         
         return True
         
