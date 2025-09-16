@@ -26,7 +26,7 @@ class PipelineConfig:
     source_file_format: FileFormat = FileFormat.PARQUET
 
     # Configurações do tracking 
-    tracking_path: Optional[str] = None
+    #tracking_path: Optional[str] = None
     source_tracking_path: Optional[str] = None
     file_interface_type: FileInterfaceType = FileInterfaceType.HDFS # Tipo de Interface de I/O usando para o tracking de arquivos
 

@@ -4,7 +4,7 @@ from typing import Union, Optional, Dict, Any, List
 from data_processing_framework.config.enums import FileInterfaceType
 from data_processing_framework.file_io.client.hdfs_client import HDFSClient
 from data_processing_framework.file_io.client.local_file_client import LocalFileClient
-from data_processing_framework.file_io.client.fabric_client import FabricLakehouseClient
+from data_processing_framework.file_io.client.fabric_lakehouse_client import FabricLakehouseClient
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +18,7 @@ class FileIOInterface:
         Inicializa o cliente unificado de arquivos
         
         Args:
-            io_credentials (dict): Credenciais de conexão para o client
+            io_credentials (dict): Credenciais de conexão para o client especificaco no 'client_type'
             client_type (str): Tipo de cliente ('local' ou 'hdfs')
             **kwargs: Argumentos específicos para cada tipo de cliente
         """

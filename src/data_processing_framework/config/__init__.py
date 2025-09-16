@@ -8,7 +8,6 @@ from .enums import (
     ProcessingStatus, MergeStrategy, FileInterfaceType, AuditColumns, SCD2Columns
 )
 from .pipeline_config import PipelineConfig
-from .validation import ConfigValidator
 
 __all__ = [
     "SourceType", "LoadType", "WriteMode", "FileFormat", "FileProcessingMode",
