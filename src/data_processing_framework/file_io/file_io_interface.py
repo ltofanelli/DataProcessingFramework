@@ -1,6 +1,6 @@
 import pandas as pd
 import logging
-from typing import Union, Optional, Dict, Any
+from typing import Union, Optional, Dict, Any, List
 from data_processing_framework.config.enums import FileInterfaceType
 from data_processing_framework.file_io.client.hdfs_client import HDFSClient
 from data_processing_framework.file_io.client.local_file_client import LocalFileClient
@@ -71,6 +71,14 @@ class FileIOInterface:
         """Salva um DataFrame como CSV"""
         return self.client.save_csv(path, dataframe, index, overwrite, **kwargs)
     
+    def read_parquet(self, path: str, columns: Optional[List[str]] = None, use_pandas_metadata: bool = True, **kwargs) -> Optional[pd.DataFrame]:
+        """Lê um arquivo Parquet como DataFrame"""
+        return self.client.read_csv(path, columns, use_pandas_metadata, **kwargs)
+
+    def save_parquet(self, path: str, dataframe: pd.DataFrame, compression: str = 'snappy', index: bool = False, partition_cols: Optional[List[str]] = None, overwrite: bool = True, **kwargs) -> bool:
+        """Salva um DataFrame como Parquet"""
+        return self.client.save_csv(path, dataframe, compression, index, partition_cols, overwrite, **kwargs)
+
     def list_files(self, path: str, file_pattern: Optional[str] = None, 
                max_depth: Optional[int] = None, exclude_patterns: Optional[list] = None,
                recursive: bool = True) -> Optional[list]:
