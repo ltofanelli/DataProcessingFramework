@@ -1,16 +1,14 @@
-import pandas as pd
-import json
-import logging
 import msal
 import requests
 import re
-from typing import Union, Optional, Dict, Any, List
-from urllib.parse import urlparse, quote
-import io
+import logging
+from typing import Union, Optional, List
+from urllib.parse import quote
+from data_processing_framework.file_io.client import BaseIOClient
 
 logger = logging.getLogger(__name__)
 
-class FabricLakehouseClient:
+class OneLakeClient(BaseIOClient):
     """Cliente para operações de leitura e escrita no OneLake do Microsoft Fabric"""
     
     def __init__(self, credentials: dict):
@@ -53,10 +51,10 @@ class FabricLakehouseClient:
     
     def _parse_path(self, path: str) -> tuple:
         """
-        Extrai workspace e o resto do caminho (já incluindo lakehouse/Files/arquivo)
+        Extrai workspace e o resto do caminho
         
         Args:
-            path: Formato esperado: "workspace/lakehouse/Files/file_path" ou "workspace/lakehouse.Lakehouse/Files/file_path"
+            path: Formato esperado: "workspace/lakehouse/Files/file_path"
         
         Returns:
             tuple: (workspace, rest_of_path)
@@ -71,23 +69,13 @@ class FabricLakehouseClient:
         return workspace, rest_of_path
     
     def _build_url(self, path: str, operation: str = "read") -> str:
-        """
-        Constrói a URL do OneLake
-        
-        Args:
-            path: Caminho completo no formato workspace/lakehouse/Files/file_path
-            operation: Tipo de operação ('read', 'write', 'list')
-        """
+        """Constrói a URL do OneLake"""
         workspace, rest_of_path = self._parse_path(path)
-        
-        # Encode o resto do path para preservar caracteres especiais
         encoded_rest_path = quote(rest_of_path, safe='/')
         
         if operation == "list":
-            # Para listagem de diretórios
             return f"https://onelake.dfs.fabric.microsoft.com/{workspace}/{encoded_rest_path}?resource=filesystem&recursive=true"
         else:
-            # Para operações de arquivo
             return f"https://onelake.dfs.fabric.microsoft.com/{workspace}/{encoded_rest_path}"
     
     def _make_request(self, url: str, method: str = "GET", data: bytes = None, headers: dict = None) -> requests.Response:
@@ -119,12 +107,7 @@ class FabricLakehouseClient:
             raise
     
     def read_file(self, path: str) -> Optional[bytes]:
-        """
-        Lê um arquivo e retorna bytes
-        
-        Args:
-            path: Caminho completo no formato workspace/lakehouse/Files/file_path
-        """
+        """Implementação específica para Fabric Lakehouse"""
         try:
             url = self._build_url(path, "read")
             response = self._make_request(url)
@@ -136,23 +119,41 @@ class FabricLakehouseClient:
                 logger.warning(f"Arquivo não encontrado: {path}")
                 return None
             else:
-                logger.error(f"Erro ao ler arquivo {path}: HTTP {response.status_code} - {response.text}")
+                logger.error(f"Erro ao ler arquivo {path}: HTTP {response.status_code}")
                 return None
                 
         except Exception as e:
             logger.error(f"Erro ao ler arquivo {path}: {e}")
             return None
     
-    def file_exists(self, path: str) -> bool:
-        """
-        Verifica se um arquivo existe sem baixar seu conteúdo
-        
-        Args:
-            path: Caminho no formato workspace/lakehouse/file_path
+    def save_file(self, path: str, content: Union[str, bytes], overwrite: bool = True) -> bool:
+        """Implementação específica para Fabric Lakehouse"""
+        try:
+            if isinstance(content, str):
+                content = content.encode('utf-8')
             
-        Returns:
-            bool: True se o arquivo existir, False caso contrário
-        """
+            url = self._build_url(path, "write")
+            
+            # Verifica se arquivo existe se overwrite=False
+            if not overwrite and self.file_exists(path):
+                logger.warning(f"Arquivo já existe e overwrite=False: {path}")
+                return False
+            
+            response = self._make_request(url, method="PUT", data=content)
+            
+            if response.status_code in [200, 201]:
+                logger.info(f"Arquivo salvo com sucesso: {path}")
+                return True
+            else:
+                logger.error(f"Erro ao salvar arquivo {path}: HTTP {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao salvar arquivo {path}: {e}")
+            return False
+    
+    def file_exists(self, path: str) -> bool:
+        """Sobrescreve o método da classe base para usar HEAD request mais eficiente"""
         try:
             url = self._build_url(path, "read")
             response = self._make_request(url, method="HEAD")
@@ -162,151 +163,17 @@ class FabricLakehouseClient:
             elif response.status_code == 404:
                 return False
             else:
-                # Em caso de outros erros, assume que não existe para ser conservador
                 logger.warning(f"Erro ao verificar existência do arquivo {path}: HTTP {response.status_code}")
                 return False
                 
         except Exception as e:
             logger.warning(f"Erro ao verificar existência do arquivo {path}: {e}")
             return False
-
-    def save_file(self, path: str, content: Union[str, bytes], overwrite: bool = True) -> bool:
-        """
-        Salva um arquivo
-        
-        Args:
-            path: Caminho no formato workspace/lakehouse/file_path
-            content: Conteúdo do arquivo (string ou bytes)
-            overwrite: Se deve sobrescrever arquivo existente
-        """
-        try:
-            if isinstance(content, str):
-                content = content.encode('utf-8')
-            
-            url = self._build_url(path, "write")
-            
-            # Verifica se arquivo existe (se overwrite=False) - usa HEAD request
-            if not overwrite and self.file_exists(path):
-                logger.warning(f"Arquivo já existe e overwrite=False: {path}")
-                return False
-            
-            # OneLake geralmente usa PUT para criar/atualizar arquivos
-            response = self._make_request(url, method="PUT", data=content)
-            
-            if response.status_code in [200, 201]:
-                logger.info(f"Arquivo salvo com sucesso: {path}")
-                return True
-            else:
-                logger.error(f"Erro ao salvar arquivo {path}: HTTP {response.status_code} - {response.text}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Erro ao salvar arquivo {path}: {e}")
-            return False
-    
-    def read_text(self, path: str, encoding: str = 'utf-8') -> Optional[str]:
-        """Lê um arquivo de texto"""
-        content = self.read_file(path)
-        if content is not None:
-            try:
-                return content.decode(encoding)
-            except UnicodeDecodeError as e:
-                logger.error(f"Erro de encoding ao ler texto {path}: {e}")
-                return None
-        return None
-    
-    def save_text(self, path: str, text: str, encoding: str = 'utf-8', overwrite: bool = True) -> bool:
-        """Salva um arquivo de texto"""
-        try:
-            content = text.encode(encoding)
-            return self.save_file(path, content, overwrite)
-        except UnicodeEncodeError as e:
-            logger.error(f"Erro de encoding ao salvar texto {path}: {e}")
-            return False
-    
-    def read_json(self, path: str) -> Optional[Union[Dict, List]]:
-        """Lê um arquivo JSON"""
-        text = self.read_text(path)
-        if text is not None:
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError as e:
-                logger.error(f"Erro ao decodificar JSON {path}: {e}")
-                return None
-        return None
-    
-    def save_json(self, path: str, data: Any, indent: int = 2, overwrite: bool = True) -> bool:
-        """Salva dados como JSON"""
-        try:
-            text = json.dumps(data, indent=indent, ensure_ascii=False)
-            return self.save_text(path, text, overwrite=overwrite)
-        except (TypeError, ValueError) as e:
-            logger.error(f"Erro ao serializar JSON {path}: {e}")
-            return False
-    
-    def read_csv(self, path: str, **kwargs) -> Optional[pd.DataFrame]:
-        """Lê um arquivo CSV como DataFrame"""
-        content = self.read_file(path)
-        if content is not None:
-            try:
-                return pd.read_csv(io.BytesIO(content), **kwargs)
-            except Exception as e:
-                logger.error(f"Erro ao ler CSV {path}: {e}")
-                return None
-        return None
-    
-    def save_csv(self, path: str, dataframe: pd.DataFrame, index: bool = False, overwrite: bool = True, **kwargs) -> bool:
-        """Salva um DataFrame como CSV"""
-        try:
-            buffer = io.StringIO()
-            dataframe.to_csv(buffer, index=index, **kwargs)
-            content = buffer.getvalue()
-            return self.save_text(path, content, overwrite=overwrite)
-        except Exception as e:
-            logger.error(f"Erro ao salvar CSV {path}: {e}")
-            return False
-    
-    def read_parquet(self, path: str, columns: Optional[List[str]] = None, 
-                    use_pandas_metadata: bool = True, **kwargs) -> Optional[pd.DataFrame]:
-        """Lê um arquivo Parquet como DataFrame"""
-        content = self.read_file(path)
-        if content is not None:
-            try:
-                return pd.read_parquet(io.BytesIO(content), columns=columns, **kwargs)
-            except Exception as e:
-                logger.error(f"Erro ao ler Parquet {path}: {e}")
-                return None
-        return None
-    
-    def save_parquet(self, path: str, dataframe: pd.DataFrame, compression: str = 'snappy', 
-                    index: bool = False, partition_cols: Optional[List[str]] = None, 
-                    overwrite: bool = True, **kwargs) -> bool:
-        """Salva um DataFrame como Parquet"""
-        try:
-            buffer = io.BytesIO()
-            dataframe.to_parquet(buffer, compression=compression, index=index, **kwargs)
-            content = buffer.getvalue()
-            return self.save_file(path, content, overwrite=overwrite)
-        except Exception as e:
-            logger.error(f"Erro ao salvar Parquet {path}: {e}")
-            return False
     
     def list_files(self, path: str, file_pattern: Optional[str] = None, 
-                  max_depth: Optional[int] = None, exclude_patterns: Optional[List[str]] = None,
-                  recursive: bool = True) -> Optional[List[str]]:
-        """
-        Lista arquivos de um diretório no OneLake
-        
-        Args:
-            path: Caminho do diretório no formato workspace/lakehouse/Files/directory_path
-            file_pattern: Padrão regex para filtrar arquivos
-            max_depth: Profundidade máxima (implementação simplificada)
-            exclude_patterns: Padrões para excluir arquivos/diretórios
-            recursive: Se deve buscar recursivamente
-        
-        Returns:
-            Lista de caminhos dos arquivos encontrados
-        """
+                   max_depth: Optional[int] = None, exclude_patterns: Optional[List[str]] = None,
+                   recursive: bool = True) -> Optional[List[str]]:
+        """Implementação específica para Fabric Lakehouse"""
         try:
             workspace, rest_of_path = self._parse_path(path.rstrip('/') + '/')
             
@@ -329,33 +196,28 @@ class FabricLakehouseClient:
             
             # Headers específicos para listagem
             headers = {
-                'x-ms-version': '2020-06-12'  # Versão da API do Azure Storage
+                'x-ms-version': '2020-06-12'
             }
             
             response = self._make_request(list_url, headers=headers)
             
             if response.status_code != 200:
-                logger.error(f"Erro ao listar arquivos {path}: HTTP {response.status_code} - {response.text}")
+                logger.error(f"Erro ao listar arquivos {path}: HTTP {response.status_code}")
                 return None
             
             files = []
-            
-            # Parse da resposta XML ou JSON (dependendo da API)
             content = response.text.strip()
             
-            # Tentativa de parsing mais robusta
+            # Parse da resposta
             if content:
-                # Se for XML (formato comum do Azure Storage)
                 if content.startswith('<?xml') or '<' in content:
                     files = self._parse_xml_listing(content, workspace, rest_of_path)
                 else:
-                    # Se for texto simples ou outro formato
                     files = self._parse_text_listing(content, workspace, rest_of_path)
             
             # Aplica filtros
             filtered_files = []
             for file_path in files:
-                # Remove prefixo do workspace para ter apenas o caminho relativo
                 relative_path = file_path.split('/', 1)[-1] if len(file_path.split('/')) > 1 else file_path
                 
                 # Filtro por padrão
@@ -374,7 +236,6 @@ class FabricLakehouseClient:
                 
                 # Filtro por profundidade máxima
                 if max_depth is not None and recursive:
-                    # Conta apenas a parte após Files/
                     files_part = relative_path.split('Files/', 1)[-1] if 'Files/' in relative_path else relative_path
                     depth = files_part.count('/')
                     if depth > max_depth:
@@ -396,8 +257,6 @@ class FabricLakehouseClient:
             root = ET.fromstring(xml_content)
             
             files = []
-            # Namespace comum do Azure Storage
-            ns = {'': 'https://schemas.microsoft.com/ado/2007/08/dataservices'}
             
             # Busca por elementos de arquivo
             for item in root.findall('.//Name') or root.findall('.//name'):
@@ -416,16 +275,12 @@ class FabricLakehouseClient:
         for line in content.split('\n'):
             line = line.strip()
             if line and not line.startswith('#') and not line.endswith('/'):
-                # Assume que cada linha contém um nome de arquivo
-                # Pode precisar de ajustes baseado no formato real
+                # Parse baseado no formato da linha
                 if ',' in line:
-                    # Se for CSV-like, pega o primeiro campo
                     filename = line.split(',')[0].strip()
                 elif '\t' in line:
-                    # Se for separado por tab
                     filename = line.split('\t')[-1].strip()
                 else:
-                    # Se for apenas o nome
                     filename = line
                 
                 if filename and not filename.startswith('.'):

@@ -14,7 +14,7 @@ from data_processing_framework.config.enums import (
     AuditColumns, 
     SCD2Columns
 )
-from data_processing_framework.config.pipeline_config import PipelineConfig
+from data_processing_framework.config import PipelineConfig
 from data_processing_framework.util.utils import table_exists
 
 logger = logging.getLogger(__name__)

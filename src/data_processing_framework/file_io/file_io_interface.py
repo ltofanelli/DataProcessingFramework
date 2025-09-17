@@ -1,12 +1,11 @@
-import pandas as pd
 import logging
 from typing import Union, Optional, Dict, Any, List
+import pandas as pd
 from data_processing_framework.config.enums import FileInterfaceType
-from data_processing_framework.file_io.client.hdfs_client import HDFSClient
-from data_processing_framework.file_io.client.local_file_client import LocalFileClient
-from data_processing_framework.file_io.client.fabric_lakehouse_client import FabricLakehouseClient
+from data_processing_framework.file_io.client import HDFSClient
+from data_processing_framework.file_io.client import LocalFileClient
+from data_processing_framework.file_io.client import OneLakeClient
 
-# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ class FileIOInterface:
         
         Args:
             io_credentials (dict): Credenciais de conexão para o client especificaco no 'client_type'
-            client_type (str): Tipo de cliente ('local' ou 'hdfs')
+            client_type (str): Tipo de cliente ('local', 'hdfs', 'fabric')
             **kwargs: Argumentos específicos para cada tipo de cliente
         """
         self.credentials = io_credentials
@@ -32,13 +31,14 @@ class FileIOInterface:
             self.client = HDFSClient(self.credentials)
 
         elif client_type == FileInterfaceType.FABRIC:
-            self.client = FabricLakehouseClient(self.credentials)
+            self.client = OneLakeClient(self.credentials)
             
         else:
             raise ValueError(f"Tipo de cliente não suportado: {self.client_type}")
         
         logger.info(f"FileIOInterface inicializado com tipo: {self.client_type}")
     
+    # Métodos primitivos - delegação simples
     def read_file(self, path: str) -> Optional[bytes]:
         """Lê um arquivo e retorna bytes"""
         return self.client.read_file(path)
@@ -47,6 +47,14 @@ class FileIOInterface:
         """Salva um arquivo"""
         return self.client.save_file(path, content, overwrite)
     
+    def list_files(self, path: str, file_pattern: Optional[str] = None, 
+                   max_depth: Optional[int] = None, exclude_patterns: Optional[list] = None,
+                   recursive: bool = True) -> Optional[list]:
+        """Lista arquivos de um diretório"""
+        files = self.client.list_files(path, file_pattern, max_depth, exclude_patterns, recursive)
+        return sorted(files) if files else files
+    
+    # Métodos de alto nível - delegação simples (lógica está na BaseIOClient)
     def read_text(self, path: str, encoding: str = 'utf-8') -> Optional[str]:
         """Lê um arquivo de texto"""
         return self.client.read_text(path, encoding)
@@ -73,31 +81,22 @@ class FileIOInterface:
     
     def read_parquet(self, path: str, columns: Optional[List[str]] = None, use_pandas_metadata: bool = True, **kwargs) -> Optional[pd.DataFrame]:
         """Lê um arquivo Parquet como DataFrame"""
-        return self.client.read_csv(path, columns, use_pandas_metadata, **kwargs)
+        return self.client.read_parquet(path, columns, use_pandas_metadata, **kwargs)
 
-    def save_parquet(self, path: str, dataframe: pd.DataFrame, compression: str = 'snappy', index: bool = False, partition_cols: Optional[List[str]] = None, overwrite: bool = True, **kwargs) -> bool:
+    def save_parquet(self, path: str, dataframe: pd.DataFrame, compression: str = 'snappy', index: bool = False, 
+                     partition_cols: Optional[List[str]] = None, overwrite: bool = True, **kwargs) -> bool:
         """Salva um DataFrame como Parquet"""
-        return self.client.save_csv(path, dataframe, compression, index, partition_cols, overwrite, **kwargs)
+        return self.client.save_parquet(path, dataframe, compression, index, partition_cols, overwrite, **kwargs)
 
-    def list_files(self, path: str, file_pattern: Optional[str] = None, 
-               max_depth: Optional[int] = None, exclude_patterns: Optional[list] = None,
-               recursive: bool = True) -> Optional[list]:
-        """
-        Lista apenas os caminhos dos arquivos de um diretório
-        
-        Args:
-            path: Caminho do diretório a ser listado
-            file_pattern: Padrão regex para filtrar arquivos (ex: r'\.csv$' para apenas CSVs)
-            max_depth: Profundidade máxima da busca (None = sem limite, só funciona se recursive=True)
-            exclude_patterns: Lista de padrões regex para excluir diretórios/arquivos (ex: ['tracking', r'\.tmp$'])
-            recursive: Se True, busca recursivamente em subdiretórios. Se False, apenas no diretório atual
-        
-        Returns:
-            list: Lista simples com os caminhos completos dos arquivos encontrados
-                Retorna None em caso de erro
-        """
-        files = self.client.list_files(path, file_pattern, max_depth, exclude_patterns, recursive)
-        return files.sort()
+    # Métodos de conveniência
+    def file_exists(self, path: str) -> bool:
+        """Verifica se um arquivo existe"""
+        return self.client.file_exists(path)
+    
+    def find_files(self, path: str, filename_pattern: str, case_sensitive: bool = True,
+                   exclude_patterns: Optional[list] = None, recursive: bool = True) -> Optional[list]:
+        """Busca arquivos por padrão no nome"""
+        return self.client.find_files(path, filename_pattern, case_sensitive, exclude_patterns, recursive)
     
     def get_client_type(self) -> str:
         """Retorna o tipo de cliente em uso"""

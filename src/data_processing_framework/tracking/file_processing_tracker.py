@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 from data_processing_framework.config import FileInterfaceType
-from data_processing_framework.file_io.file_io_interface import FileIOInterface
+from data_processing_framework.file_io import FileIOInterface
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)

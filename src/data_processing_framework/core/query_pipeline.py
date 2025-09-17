@@ -8,11 +8,10 @@ from pyspark.sql.functions import col, lit, current_timestamp
 from pyspark.sql.types import TimestampType
 from delta.tables import DeltaTable
 
-from .base_pipeline import BasePipeline
-from data_processing_framework.config.pipeline_config import PipelineConfig
+from data_processing_framework.core import BasePipeline
+from data_processing_framework.config import PipelineConfig
 from data_processing_framework.config.enums import LoadType, WriteMode
-# from data_framework.tracking_antigo.watermark_manager import WatermarkManager
-from data_processing_framework.transformation.registry import TransformationRegistry
+from data_processing_framework.transformation import TransformationRegistry
 
 class QueryPipeline(BasePipeline):
     """Processador para fontes de query (camadas após Raw)"""

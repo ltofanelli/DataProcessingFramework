@@ -5,7 +5,7 @@ Transformações pré-definidas do framework
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, trim, current_timestamp, current_date, concat, monotonically_increasing_id, row_number, regexp_replace, hash
 from pyspark.sql.types import StringType
-from data_processing_framework.transformation.registry import TransformationRegistry
+from data_processing_framework.transformation import TransformationRegistry
 
 @TransformationRegistry.register("add_audit_columns")
 def add_audit_columns(df: DataFrame) -> DataFrame:

@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession, DataFrame
 from typing import List, Union
 
-from data_processing_framework.config.pipeline_config import PipelineConfig
+from data_processing_framework.config import PipelineConfig
 from data_processing_framework.config.enums import FileProcessingMode, FileFormat
 
 class Reader:

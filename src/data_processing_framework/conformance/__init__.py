@@ -3,6 +3,6 @@ Módulo de processadores específicos
 """
 
 from .conformance_factory import ConformanceFactory
-from .conformance import Conformance
+from .conformance_strategies import ConformanceStrategies
 
-__all__ = ["ConformanceFactory", "Conformance"]
+__all__ = ["ConformanceFactory", "ConformanceStrategies"]

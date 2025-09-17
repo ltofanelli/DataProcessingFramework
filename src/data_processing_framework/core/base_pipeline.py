@@ -4,9 +4,8 @@ Classe base abstrata para processadores
 import sys
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Union
-from pyspark.sql import SparkSession, DataFrame
-from data_processing_framework.config.pipeline_config import PipelineConfig
+from pyspark.sql import SparkSession
+from data_processing_framework.config import PipelineConfig
 
 # Configuração global do logging
 logging.basicConfig(

@@ -3,9 +3,9 @@ Factory para criação de processadores
 """
 
 from pyspark.sql import SparkSession
-from ..config.pipeline_config import PipelineConfig
-from ..config.enums import SourceType
-from .base_pipeline import BasePipeline
+from data_processing_framework.config import PipelineConfig
+from data_processing_framework.config.enums import SourceType
+from data_processing_framework.core import BasePipeline
 
 class PipelineFactory:
     """Factory para criar processadores baseado na configuração"""

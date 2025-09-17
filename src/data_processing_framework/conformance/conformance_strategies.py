@@ -21,7 +21,7 @@ from data_processing_framework.config import AuditColumns, SCD2Columns, FileProc
 import logging
 logger = logging.getLogger(__name__)
 
-class Conformance(ABC):
+class ConformanceStrategies(ABC):
     """Classe base para estratégias de processamento"""
     
     def __init__(self, spark: SparkSession, config: PipelineConfig):

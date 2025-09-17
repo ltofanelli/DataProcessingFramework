@@ -4,7 +4,7 @@ Classe base para transformações customizadas
 
 from abc import ABC, abstractmethod
 from pyspark.sql import DataFrame
-from data_processing_framework.transformation.registry import TransformationRegistry
+from data_processing_framework.transformation import TransformationRegistry
 
 class CustomTransformation(ABC):
     """Classe base para transformações customizadas complexas"""

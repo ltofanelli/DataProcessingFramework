@@ -6,8 +6,8 @@ import os
 from typing import List, Union, Dict, Any
 from pyspark.sql import DataFrame
 
-from data_processing_framework.core.base_pipeline import BasePipeline
-from data_processing_framework.config.pipeline_config import PipelineConfig
+from data_processing_framework.core import BasePipeline
+from data_processing_framework.config import PipelineConfig
 from data_processing_framework.config.enums import FileProcessingMode
 from data_processing_framework.tracking import FileProcessingTracker
 from data_processing_framework.file_io import FileIOInterface
