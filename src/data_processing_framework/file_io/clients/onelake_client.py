@@ -2,7 +2,7 @@ import msal
 import requests
 import re
 import logging
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Dict, Any
 from urllib.parse import quote
 from .base import BaseIOClient
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class OneLakeClient(BaseIOClient):
     """Cliente para operações de leitura e escrita no OneLake do Microsoft Fabric"""
     
-    def __init__(self, credentials: dict):
+    def __init__(self,  credentials: Dict[str, Any]):
         """
         Inicializa o cliente do Fabric Lakehouse
         
