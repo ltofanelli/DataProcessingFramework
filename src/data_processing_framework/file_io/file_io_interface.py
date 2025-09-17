@@ -1,9 +1,9 @@
 import logging
 from typing import Union, Optional, Dict, Any, List
 import pandas as pd
-from .client import HDFSClient
-from .client import LocalFileClient
-from .client import OneLakeClient
+from .clients import HDFSClient
+from .clients import LocalFileClient
+from .clients import OneLakeClient
 from data_processing_framework.config.enums import FileInterfaceType
 
 logging.basicConfig(level=logging.INFO)
