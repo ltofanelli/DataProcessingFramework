@@ -2,7 +2,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Union, Optional, List
-from .base_io_client import BaseIOClient
+from .base import BaseIOClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ Factory para criação de processadores
 from pyspark.sql import SparkSession
 from data_processing_framework.config import PipelineConfig
 from data_processing_framework.config.enums import SourceType
-from .base_pipeline import BasePipeline
+from .strategies.base import BasePipeline
 
 class PipelineFactory:
     """Factory para criar processadores baseado na configuração"""
@@ -15,8 +15,8 @@ class PipelineFactory:
         """Cria processador baseado no tipo de fonte"""
         
         # Importações locais para evitar circular imports
-        from .file_pipeline import FilePipeline
-        from .query_pipeline import QueryPipeline
+        from .strategies import FilePipeline
+        from .strategies import QueryPipeline
         
         if config.source_type == SourceType.FILE:
             return FilePipeline(spark, config)

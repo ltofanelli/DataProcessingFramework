@@ -1,7 +1,8 @@
 from pyspark.sql import SparkSession
 from data_processing_framework.config import PipelineConfig
 from data_processing_framework.config.enums import LoadType, WriteMode
-from .conformance_strategies import *
+from .strategies.base import BaseConformance
+from .strategies import *
    
 class ConformanceFactory:
     """Factory para criar estratégias de processamento"""
@@ -17,7 +18,7 @@ class ConformanceFactory:
     }
     
     @classmethod
-    def create_strategy(cls, spark: SparkSession, config: PipelineConfig) -> ConformanceStrategies:
+    def create_strategy(cls, spark: SparkSession, config: PipelineConfig) -> BaseConformance:
         """Cria estratégia baseada na configuração"""
         cls.spark = spark
         strategy_key = (

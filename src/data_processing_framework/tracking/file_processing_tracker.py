@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
-from data_processing_framework.config import FileInterfaceType
+from data_processing_framework.config.enums import FileInterfaceType
 from data_processing_framework.file_io import FileIOInterface
 
 # Configurar logging

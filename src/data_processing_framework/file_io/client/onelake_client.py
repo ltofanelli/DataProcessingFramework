@@ -4,7 +4,7 @@ import re
 import logging
 from typing import Union, Optional, List
 from urllib.parse import quote
-from .base_io_client import BaseIOClient
+from .base import BaseIOClient
 
 logger = logging.getLogger(__name__)
 

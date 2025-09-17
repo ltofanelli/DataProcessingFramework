@@ -1,5 +1,6 @@
-from data_processing_framework.config import *
-from data_processing_framework.core import PipelineFactory
+from data_processing_framework.config.enums import *
+from data_processing_framework.config import PipelineConfig
+from data_processing_framework.pipeline import PipelineFactory
 from pyspark.sql import SparkSession
 
 from data_processing_framework.transformation.registry import TransformationRegistry
