@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 from data_processing_framework.config import PipelineConfig
 from data_processing_framework.config.enums import LoadType, WriteMode
-from data_processing_framework.conformance.conformance_strategies import *
+from .conformance_strategies import *
    
 class ConformanceFactory:
     """Factory para criar estratégias de processamento"""

@@ -4,7 +4,7 @@ Configuração principal do framework
 
 from dataclasses import dataclass
 from typing import List, Optional, Any
-from data_processing_framework.config import SourceType, LoadType, WriteMode, FileFormat, FileProcessingMode, FileInterfaceType, SCD2Columns
+from .enums import SourceType, LoadType, WriteMode, FileFormat, FileProcessingMode, FileInterfaceType, SCD2Columns
 
 @dataclass
 class PipelineConfig:

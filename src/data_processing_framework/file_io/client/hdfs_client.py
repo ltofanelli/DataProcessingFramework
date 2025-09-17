@@ -3,7 +3,7 @@ import re
 import logging
 import time
 from typing import Union, Optional, Dict, Any
-from data_processing_framework.file_io.client import BaseIOClient
+from .base_io_client import BaseIOClient
 
 logger = logging.getLogger(__name__)
 
