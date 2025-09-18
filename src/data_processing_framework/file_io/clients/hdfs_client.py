@@ -29,7 +29,8 @@ class HDFSClient(BaseIOClient):
             "hdfs"
         )
         self.base_url = f"http://{self.namenode_host}:{self.namenode_port}/webhdfs/v1"
-    
+        logger.info("HDFSClient inicializado")
+
     def _fix_datanode_url(self, url: str): 
         """Corrige URLs de DataNode para usar localhost"""
         if not url:
