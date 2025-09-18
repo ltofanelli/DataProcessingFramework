@@ -171,8 +171,8 @@ class OneLakeClient(BaseIOClient):
             return False
     
     def list_files(self, path: str, file_pattern: Optional[str] = None, 
-                   max_depth: Optional[int] = None, exclude_patterns: Optional[List[str]] = None,
-                   recursive: bool = True) -> Optional[List[str]]:
+                max_depth: Optional[int] = None, exclude_patterns: Optional[List[str]] = None,
+                recursive: bool = True) -> Optional[List[str]]:
         """Implementação específica para Fabric Lakehouse"""
         try:
             workspace, rest_of_path = self._parse_path(path.rstrip('/') + '/')
@@ -208,12 +208,9 @@ class OneLakeClient(BaseIOClient):
             files = []
             content = response.text.strip()
             
-            # Parse da resposta
+            # Parse da resposta JSON
             if content:
-                if content.startswith('<?xml') or '<' in content:
-                    files = self._parse_xml_listing(content, workspace, rest_of_path)
-                else:
-                    files = self._parse_text_listing(content, workspace, rest_of_path)
+                files = self._parse_json_listing(content, workspace, rest_of_path)
             
             # Aplica filtros
             filtered_files = []
@@ -249,42 +246,58 @@ class OneLakeClient(BaseIOClient):
         except Exception as e:
             logger.error(f"Erro ao listar arquivos {path}: {e}")
             return None
-    
-    def _parse_xml_listing(self, xml_content: str, workspace: str, rest_of_path: str) -> List[str]:
-        """Parse de resposta XML da API de listagem"""
-        try:
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(xml_content)
-            
-            files = []
-            
-            # Busca por elementos de arquivo
-            for item in root.findall('.//Name') or root.findall('.//name'):
-                if item.text and not item.text.endswith('/'):  # Exclui diretórios
-                    full_path = f"{workspace}/{item.text}"
-                    files.append(full_path)
-            
-            return files
-        except Exception as e:
-            logger.warning(f"Erro no parse XML: {e}")
-            return []
-    
-    def _parse_text_listing(self, content: str, workspace: str, rest_of_path: str) -> List[str]:
-        """Parse de resposta em texto simples"""
+
+    def _parse_json_listing(self, content: str, workspace: str, base_path: str) -> List[str]:
+        """Parse da resposta JSON da API do Fabric Lakehouse"""
         files = []
-        for line in content.split('\n'):
-            line = line.strip()
-            if line and not line.startswith('#') and not line.endswith('/'):
-                # Parse baseado no formato da linha
-                if ',' in line:
-                    filename = line.split(',')[0].strip()
-                elif '\t' in line:
-                    filename = line.split('\t')[-1].strip()
-                else:
-                    filename = line
+        try:
+            import json
+            
+            # Parse do JSON
+            data = json.loads(content)
+            
+            # Verifica se existe a chave 'paths'
+            if 'paths' not in data:
+                logger.warning("Resposta JSON não contém a chave 'paths'")
+                return files
+            
+            paths = data['paths']
+            logger.debug(f"Encontrados {len(paths)} items no JSON")
+            
+            for item in paths:
+                # Pega o nome do arquivo/diretório
+                name = item.get('name', '')
                 
-                if filename and not filename.startswith('.'):
-                    full_path = f"{workspace}/{filename}"
-                    files.append(full_path)
-        
-        return files
+                if not name:
+                    continue
+                
+                # Verifica se é um diretório
+                is_directory = item.get('isDirectory')
+                
+                # Se isDirectory não existe na resposta, assumimos que é um arquivo
+                # Se isDirectory existe e é "true", é um diretório - pula
+                if is_directory and is_directory.lower() == 'true':
+                    logger.debug(f"Pulando diretório: {name}")
+                    continue
+                
+                # É um arquivo - adiciona à lista
+                # Se o nome já inclui o workspace, usa como está
+                # Senão, adiciona o workspace
+                if name.startswith(workspace):
+                    full_path = name
+                else:
+                    full_path = f"{workspace}/{name}" if not name.startswith('/') else f"{workspace}{name}"
+                
+                files.append(full_path)
+                logger.debug(f"Arquivo encontrado: {full_path}")
+            
+            logger.info(f"Parse JSON concluído: {len(files)} arquivos")
+            return files
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Erro ao fazer parse do JSON: {e}")
+            logger.debug(f"Conteúdo que causou erro: {content[:500]}...")
+            return []
+        except Exception as e:
+            logger.error(f"Erro inesperado no parse JSON: {e}")
+            return []
