@@ -4,14 +4,12 @@ import logging
 import time
 from typing import Union, Optional, Dict, Any
 from urllib.parse import urlparse, urlunparse
-import socket
-
 from .base import BaseIOClient
 
 logger = logging.getLogger(__name__)
 
 class HDFSClient(BaseIOClient):
-    """Cliente para operações no HDFS via WebHDFS"""
+    """Cliente para operações no HDFS via WebHDFS, com suporte a mapeamento de DataNodes."""
 
     def __init__(self, credentials: Optional[Dict[str, Any]] = None):
         """
@@ -19,9 +17,13 @@ class HDFSClient(BaseIOClient):
             credentials: dicionário com as credenciais necessárias.
                 Exemplo:
                 {
-                    "host": "meu-namenode",
+                    "host": "172.26.13.147",          # NameNode
                     "port": 9870,
-                    "user": "airflow"
+                    "user": "hadoop.usr",
+                    "datanodes": {                     # Mapeamento hostname -> IP + porta
+                        "archdata-p01.intradesk": {"host": "172.26.13.147", "port": 50075},
+                        "archdata-p02.intradesk": {"host": "172.26.13.148", "port": 50075},
+                    }
                 }
         """
         credentials = credentials or {}
@@ -31,108 +33,110 @@ class HDFSClient(BaseIOClient):
             (credentials[k] for k in ("login", "user", "username") if k in credentials),
             "hdfs"
         )
+        self.datanodes = credentials.get("datanodes", {})
         self.base_url = f"http://{self.host}:{self.port}/webhdfs/v1"
         logger.info("HDFSClient inicializado")
 
     def _fix_datanode_url(self, url: str) -> str:
-        """Corrige URLs de DataNode apenas se o hostname não for resolvível"""
+        """Substitui hostname/porta do DataNode pelo IP/porta configurados em credentials."""
         if not url:
             return url
 
         parsed = urlparse(url)
         hostname = parsed.hostname
 
-        try:
-            # tenta resolver o hostname original
-            socket.gethostbyname(hostname)
-            # se resolve, não precisa alterar
-            return url
-        except socket.gaierror:
-            # se não resolve, substitui pelo host/IP configurado
-            new_netloc = f"{self.host}:{parsed.port}"
+        if hostname in self.datanodes:
+            dn_info = self.datanodes[hostname]
+            new_host = dn_info.get("host", hostname)
+            new_port = dn_info.get("port", parsed.port)
+            new_netloc = f"{new_host}:{new_port}"
             return urlunparse(parsed._replace(netloc=new_netloc))
+        else:
+            # fallback: mantém a URL original
+            return url
 
     def read_file(self, hdfs_path: str, retries: int = 3) -> Optional[bytes]:
-        """Implementação específica para HDFS"""
+        """Lê um arquivo do HDFS via WebHDFS"""
         for attempt in range(retries):
             try:
                 read_url = f"{self.base_url}{hdfs_path}?op=OPEN&user.name={self.user}"
-                
                 response = requests.get(read_url, allow_redirects=False, timeout=30)
 
                 if response.status_code == 200:
                     return response.content
-                
                 elif response.status_code == 404:
-                    logger.info(f"O arquivo não foi encontrado ou não existe: {hdfs_path}")
+                    logger.info(f"Arquivo não encontrado: {hdfs_path}")
                     return None
-                
-                elif response.status_code == 307:
-                    redirect_url = response.headers.get('Location')
-                    redirect_url = self._fix_datanode_url(redirect_url)
-                    
+                elif response.status_code in (307, 302):
+                    redirect_url = self._fix_datanode_url(response.headers.get('Location'))
                     data_response = requests.get(redirect_url, timeout=45)
-                    
                     if data_response.status_code == 200:
                         return data_response.content
                     else:
                         logger.error(f"Erro ao ler do DataNode (tentativa {attempt + 1}/{retries}): {data_response.status_code}")
-
                 else:
                     logger.error(f"Erro ao acessar arquivo {hdfs_path} (tentativa {attempt + 1}/{retries}): {response.status_code}")
-                
+
                 if attempt < retries - 1:
                     time.sleep(3)
-                    
             except Exception as e:
                 logger.error(f"Erro na tentativa {attempt + 1}/{retries} ao ler {hdfs_path}: {e}")
                 if attempt < retries - 1:
                     time.sleep(3)
-        
+
         logger.error(f"Falha ao ler arquivo {hdfs_path} após {retries} tentativas")
         return None
-    
+
     def save_file(self, hdfs_path: str, content: Union[str, bytes], overwrite: bool = True, retries: int = 3) -> bool:
-        """Implementação específica para HDFS"""
+        """Salva um arquivo no HDFS via WebHDFS"""
         for attempt in range(retries):
             try:
-                if isinstance(content, str):
-                    content_bytes = content.encode('utf-8')
-                else:
-                    content_bytes = content
-                
+                content_bytes = content.encode('utf-8') if isinstance(content, str) else content
                 create_url = f"{self.base_url}{hdfs_path}?op=CREATE&overwrite={str(overwrite).lower()}&user.name={self.user}&permission=777"
-                
                 response = requests.put(create_url, allow_redirects=False, timeout=15)
-                
-                if response.status_code == 307:
-                    redirect_url = self._fix_datanode_url(response.headers['Location'])
-                    
+
+                if response.status_code in (307, 302):
+                    redirect_url = self._fix_datanode_url(response.headers.get('Location'))
                     write_response = requests.put(
-                        redirect_url, 
-                        data=content_bytes, 
+                        redirect_url,
+                        data=content_bytes,
                         headers={'Content-Type': 'application/octet-stream'},
                         timeout=45
                     )
-                    
                     if write_response.status_code == 201:
                         logger.info(f"Arquivo salvo em: {hdfs_path}")
                         return True
                     else:
                         logger.error(f"Erro ao escrever arquivo {hdfs_path} (tentativa {attempt + 1}/{retries})")
-                        
                 else:
                     logger.error(f"Erro ao criar arquivo {hdfs_path} (tentativa {attempt + 1}/{retries}): {response.status_code}")
-                
+
                 if attempt < retries - 1:
                     time.sleep(5)
-                    
             except Exception as e:
                 logger.error(f"Erro na tentativa {attempt + 1}/{retries} ao salvar {hdfs_path}: {e}")
                 if attempt < retries - 1:
                     time.sleep(5)
-        
+
         return False
+
+    def list_directory(self, hdfs_path: str) -> Optional[list]:
+        """Lista o conteúdo de um diretório no HDFS"""
+        try:
+            list_url = f"{self.base_url}{hdfs_path}?op=LISTSTATUS&user.name={self.user}"
+            response = requests.get(list_url, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                return result.get('FileStatuses', {}).get('FileStatus', [])
+            elif response.status_code == 404:
+                logger.info(f"Diretório não encontrado: {hdfs_path}")
+                return None
+            else:
+                logger.error(f"Erro ao listar diretório {hdfs_path}: {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Erro ao listar diretório {hdfs_path}: {e}")
+            return None
     
     def list_files(self, hdfs_path: str, file_pattern: Optional[str] = None, 
                max_depth: Optional[int] = None, exclude_patterns: Optional[list] = None,
@@ -193,25 +197,6 @@ class HDFSClient(BaseIOClient):
             
         except Exception as e:
             logger.error(f"Erro na listagem de {hdfs_path}: {e}")
-            return None
-
-    def list_directory(self, hdfs_path: str) -> Optional[list]:
-        """Lista o conteúdo de um diretório no HDFS - método específico do HDFS"""
-        try:
-            list_url = f"{self.base_url}{hdfs_path}?op=LISTSTATUS&user.name={self.user}"
-            response = requests.get(list_url, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result.get('FileStatuses', {}).get('FileStatus', [])
-            elif response.status_code == 404:
-                logger.info(f"Diretório não encontrado: {hdfs_path}")
-                return None
-            else:
-                logger.error(f"Erro ao listar diretório {hdfs_path}: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"Erro ao listar diretório {hdfs_path}: {e}")
             return None
     
     # Sobrescrever file_exists para usar HEAD request mais eficiente
