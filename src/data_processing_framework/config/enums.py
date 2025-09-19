@@ -87,6 +87,7 @@ class FileInterfaceType(Enum):
     LOCAL = 'local'
     HDFS = 'hdfs'
     FABRIC = 'fabric'
+    SFTP = 'sftp'
 
 ## Enums do processamento
 class AuditColumns(Enum):

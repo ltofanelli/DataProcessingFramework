@@ -4,6 +4,7 @@ import pandas as pd
 from .clients import HDFSClient
 from .clients import LocalFileClient
 from .clients import OneLakeClient
+from .clients import SFTPClient
 from data_processing_framework.config.enums import FileInterfaceType
 
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +33,9 @@ class FileIOInterface:
 
         elif client_type == FileInterfaceType.FABRIC:
             self.client = OneLakeClient(self.credentials)
-            
+
+        elif client_type == FileInterfaceType.SFTP:
+            self.client = SFTPClient(self.credentials)
         else:
             raise ValueError(f"Tipo de cliente não suportado: {self.client_type}")
         
