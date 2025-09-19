@@ -22,13 +22,13 @@ class HDFSClient(BaseIOClient):
                 }
         """
         credentials = credentials or {}
-        self.namenode_host = credentials.get("host", "namenode")
-        self.namenode_port = credentials.get("port", 9870)
+        self.host = credentials.get("host", "namenode")
+        self.port = credentials.get("port", 9870)
         self.user = next(
             (credentials[k] for k in ("login", "user", "username") if k in credentials),
             "hdfs"
         )
-        self.base_url = f"http://{self.namenode_host}:{self.namenode_port}/webhdfs/v1"
+        self.base_url = f"http://{self.host}:{self.port}/webhdfs/v1"
         logger.info("HDFSClient inicializado")
 
     def _fix_datanode_url(self, url: str): 
@@ -36,8 +36,8 @@ class HDFSClient(BaseIOClient):
         if not url:
             return url
         
-        url = re.sub(r'://0\.0\.0\.0:9870', f'://{self.namenode_host}:{self.namenode_port}', url)
-        url = re.sub(r'://[^:/]+:9870', f'://{self.namenode_host}:{self.namenode_port}', url)
+        url = re.sub(r'://0\.0\.0\.0:9870', f'://{self.host}:{self.port}', url)
+        url = re.sub(r'://[^:/]+:9870', f'://{self.host}:{self.port}', url)
         
         return url
     
@@ -210,5 +210,5 @@ class HDFSClient(BaseIOClient):
             status_url = f"{self.base_url}{path}?op=GETFILESTATUS&user.name={self.user}"
             response = requests.get(status_url, timeout=15)
             return response.status_code == 200
-        except Exception:
-            return False
+        except Exception as e:
+            raise e
