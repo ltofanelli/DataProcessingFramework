@@ -3,6 +3,9 @@ import re
 import logging
 import time
 from typing import Union, Optional, Dict, Any
+from urllib.parse import urlparse, urlunparse
+import socket
+
 from .base import BaseIOClient
 
 logger = logging.getLogger(__name__)
@@ -31,16 +34,24 @@ class HDFSClient(BaseIOClient):
         self.base_url = f"http://{self.host}:{self.port}/webhdfs/v1"
         logger.info("HDFSClient inicializado")
 
-    def _fix_datanode_url(self, url: str): 
-        """Corrige URLs de DataNode para usar localhost"""
+    def _fix_datanode_url(self, url: str) -> str:
+        """Corrige URLs de DataNode apenas se o hostname não for resolvível"""
         if not url:
             return url
-        
-        url = re.sub(r'://0\.0\.0\.0:9870', f'://{self.host}:{self.port}', url)
-        url = re.sub(r'://[^:/]+:9870', f'://{self.host}:{self.port}', url)
-        
-        return url
-    
+
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+
+        try:
+            # tenta resolver o hostname original
+            socket.gethostbyname(hostname)
+            # se resolve, não precisa alterar
+            return url
+        except socket.gaierror:
+            # se não resolve, substitui pelo host/IP configurado
+            new_netloc = f"{self.host}:{parsed.port}"
+            return urlunparse(parsed._replace(netloc=new_netloc))
+
     def read_file(self, hdfs_path: str, retries: int = 3) -> Optional[bytes]:
         """Implementação específica para HDFS"""
         for attempt in range(retries):
