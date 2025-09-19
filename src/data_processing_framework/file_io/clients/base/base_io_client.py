@@ -105,8 +105,7 @@ class BaseIOClient(ABC):
         return None
     
     def save_parquet(self, path: str, dataframe: pd.DataFrame, compression: str = 'snappy', 
-                     index: bool = False, partition_cols: Optional[List[str]] = None, 
-                     overwrite: bool = True, **kwargs) -> bool:
+                     index: bool = False, overwrite: bool = True, **kwargs) -> bool:
         """Salva um DataFrame como Parquet"""
         try:
             buffer = io.BytesIO()
