@@ -27,7 +27,6 @@ def exemplo_arquivo_csv(spark):
             read_options={"header": "true", "multiline": "true", "quote": "\"", "delimiter": ","},
             tracking_path = "/stage/tracking/clientes",
             source_tracking_path = "/raw/clientes/tracking",
-            tracking_io_credentials = {"host": "namenode", "port": "9870", "username": "hdfs"},
             soft_delete_column="status",
             soft_delete_true_value="C",
             custom_transformations=["teste_registry"],

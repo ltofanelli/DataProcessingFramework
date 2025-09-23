@@ -2,7 +2,7 @@
 Configuração principal do framework
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Any
 from .enums import SourceType, LoadType, WriteMode, FileFormat, FileProcessingMode, FileInterfaceType, SCD2Columns
 
@@ -18,8 +18,7 @@ class PipelineConfig:
     target_table: str
     target_path: str
     tracking_path: str
-    tracking_io_credentials: dict
-
+    
     # Configurações de fonte
     source_path: Optional[str] = None
     source_query: Optional[str] = None
@@ -29,6 +28,9 @@ class PipelineConfig:
     #tracking_path: Optional[str] = None
     source_tracking_path: Optional[str] = None
     file_interface_type: FileInterfaceType = FileInterfaceType.HDFS # Tipo de Interface de I/O usando para o tracking de arquivos
+    tracking_io_credentials: dict = field(
+        default_factory=lambda: {"host": "namenode", "port": "9870", "username": "hdfs"}
+    )
 
     # Configurações de esquema
     primary_keys: Optional[List[str]] = None
